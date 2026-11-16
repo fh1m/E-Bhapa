@@ -1,77 +1,63 @@
+# E-Bhapa
 
-# E-Bhapa - Your E-companion
+**Six hours, no team, one ultrasonic sensor. What did the robot actually do?**
 
-**Intro**
-I am thrilled to present to you *E-Bhapa*
+February 2024, a university robotics contest. The team bailed, the last servo
+burnt out, and the components cupboard was empty. What was left: a 4WD chassis
+on an Adafruit motor shield, an HC-SR04 ultrasonic sensor, about four coffees
+and a night.
 
+The original README promised a lot: object following, dynamic obstacle
+avoidance with randomised turns, enhanced exploration, proportional and
+adaptive speed control. It was written at hour five. This repo checks it
+against the code.
 
-*context: So we had a team and all of my team members bailed on me so I had to make something at the last minute so here what 6 hours, no sleep and 4 cup of coffee makes when there is no components available, the last servo burnt, so with all I had left I had to show some creativity in the code and I liked the code in the end so thought to share it.*
+## The audit
 
+`e_bhapa/e_bhapa.ino` is the contest sketch, unchanged. Read closely, it has
+opinions the README didn't mention:
 
-*What can it do actually?*
-**lets see**
+| the README said | the code does | why |
+|---|---|---|
+| backs up, turns in place | **never reverses, never turns** | `adjustMotorSpeed(left, right)` sends `left` to motors 1 *and* 2 (front-left, front-right) and `right` to 3 and 4 (the rear pair). Each side of a skid-steer chassis then averages the two, so both sides always match. |
+| "move backward" | moves forward, slowly | AFMotor's `setSpeed()` takes a `uint8_t`. −255 wraps to **1**, −200 to **56**, −150 to **106**. Every `run()` call says `FORWARD` anyway. |
+| follows objects at a safe distance | **drives into them, gently** | Within 25 cm, speed maps 0→25 cm onto PWM 100→255. Closer means slower, but never stopped. |
+| dynamic obstacle avoidance | fires in a 5 cm band | Avoidance runs only between 25 and 30 cm. Anything nearer is "followed". |
+| enhanced exploration, 5 behaviours | 5 behaviours, half the time | `random(0, 10)` picks a case, and only cases 0–4 exist. |
 
-**Feature 1: Follow Object**
-E-Bhapa's first remarkable feature is its ability to intelligently follow objects detected by its sonar sensor. Using cutting-edge algorithms, E-Bhapa dynamically adjusts its speed to maintain a safe distance from the detected object, showcasing precise and responsive movement.
+## The re-enactment
 
-**Feature 2: Dynamic Obstacle Avoidance**
-In the face of unexpected obstacles, E-Bhapa seamlessly navigates its surroundings with dynamic obstacle avoidance. When confronted with an obstacle, E-Bhapa strategically pauses before executing a randomized turn, ensuring smooth and efficient traversal through challenging environments.
+`sim/run.py` runs the sketch line for line in a 3 × 3 m room, with the same
+thresholds, random draws and `delay()`s, and both hardware quirks. A second
+run fixes only the wiring and the signs and leaves the logic alone.
 
-**Feature 3: Enhanced Exploration**
-Equipped with a diverse range of exploration tactics, E-Bhapa demonstrates unparalleled adaptability in unknown terrains. Through randomized actions including forward movement, backward movement, turns, and pauses, E-Bhapa explores its environment with a blend of curiosity and intelligence, uncovering new paths and opportunities.
+![Three minutes of driving, as written and as intended](assets/three_minutes.png)
 
-**Feature 4: Proportional Speed Control**
-E-Bhapa's proportional speed control ensures optimal performance in various environmental conditions. By adjusting its speed based on the complexity of its surroundings, E-Bhapa maximizes efficiency and safety, demonstrating unparalleled versatility in exploration tasks.
+| ten runs × 3 min | pinned against a wall | room visited |
+|---|---:|---:|
+| **as written** | **92 %** of the time, first after a median 14 s | 3 % |
+| as intended | 25 % | 9 % |
 
-**Feature 5: Adaptive Speed Control**
-E-Bhapa further elevates its capabilities with adaptive speed control, a groundbreaking feature that enables real-time adjustments to its velocity based on environmental complexity. By dynamically modulating its speed, E-Bhapa optimizes its performance, showcasing unmatched agility and intelligence in the field.
+As written, E-Bhapa picks a direction, drives to the nearest wall at a
+respectful decelerating crawl, and stays there pressing gently for the rest of
+the demo. That is, technically, following an object.
 
-## Code Summary
-### see what shit does
+Fixed, it wanders. It still parks against a wall a quarter of the time,
+because "follow anything within 25 cm" can't tell a person from a wall. One
+sensor pointing forward can't either. That was the real lesson, and it took
+a later robot with more than one sensor to learn it properly.
 
-1. **setup() Function:**
-   - This function is executed once at the beginning of the program.
-   - It initializes serial communication for debugging and sets the pinMode for the ultrasonic sensor's TRIG_PIN and ECHO_PIN.
+## Run it
 
-2. **loop() Function:**
-   - The loop function runs continuously after the setup.
-   - It retrieves the current distance from the ultrasonic sensor and prints it to the serial monitor for debugging.
-   - Based on the distance measured, it determines the appropriate action for E-Bhapa to take: following an object, dynamically avoiding obstacles, or exploring the environment.
+```bash
+python -m venv .venv && . .venv/bin/activate
+pip install -r requirements.txt
+python -m sim.run            # ~2 s, prints the table, rewrites assets/*.png
+```
 
-3. **measureDistance() Function:**
-   - This function calculates the distance to an object detected by the ultrasonic sensor.
-   - It sends a brief pulse to the sensor's TRIG_PIN to initiate a measurement and then measures the time it takes for the pulse to bounce back (echo) from the object.
-   - The duration of the echo pulse is converted into distance using the formula: distance = (duration * speed of sound) / 2.
+The sketch builds in the Arduino IDE with the **Adafruit Motor Shield library
+(v1, `AFMotor.h`)** from the Library Manager. The 2024 commit had a copy of
+every Adafruit library on the laptop that night; they've been removed in
+favour of the Library Manager.
 
-4. **adjustMotorSpeed() Function:**
-   - This function adjusts the speed of E-Bhapa's motors to achieve the desired movement.
-   - It takes two parameters: leftSpeed and rightSpeed, representing the speed of the left and right motors, respectively.
-   - The function sets the speed of each motor using the setSpeed() method from the AFMotor library and then activates the motors to run in the FORWARD direction using the run() method.
-
-5. **stopMotors() Function:**
-   - This function stops all of E-Bhapa's motors.
-   - It sets the speed of each motor to zero using the setSpeed() method and then releases the motors using the run() method with the RELEASE parameter.
-
-6. **followObject() Function:**
-   - This function enables E-Bhapa to track and follow objects within a specified distance range.
-   - It adjusts the speed of the motors based on the distance to the detected object, ensuring E-Bhapa maintains a safe following distance while tracking the object's movement.
-
-7. **dynamicObstacleAvoidance() Function:**
-   - This function implements dynamic obstacle avoidance behavior for E-Bhapa.
-   - It pauses E-Bhapa's movement, executes a randomized turn in a left or right direction to navigate around the obstacle, and then resumes exploration.
-
-8. **enhancedExploration() Function:**
-   - This function enhances E-Bhapa's exploration capabilities by executing a randomized sequence of actions, including moving forward, moving backward, turning left, turning right, and pausing.
-   - It allows E-Bhapa to explore its environment comprehensively, uncovering new paths and opportunities for further exploration.
-
-These functions work together seamlessly to provide E-Bhapa with intelligent and adaptive behavior, allowing it to navigate and explore its surroundings effectively in various scenarios.
-
-## Finally, lets see our Bhapa(s)
-
-Bhapa                      |  E-Bhapa
-:-------------------------:|:-------------------------:
-<img src="https://github.com/fh1m/E_Bhapa/assets/132839265/91687e66-9a50-4cab-a14e-3a07d4fe1148" width="500">   |  <img src="https://github.com/fh1m/E_Bhapa/assets/132839265/4c5dfb16-a4f3-441b-a47e-7087035e5113" width="500"> 
-
-## looks identical, wow
-
-
+Six hours, no sleep, wrong wires. It shipped.
